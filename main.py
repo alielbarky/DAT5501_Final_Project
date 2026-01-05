@@ -1,13 +1,57 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from sklearn.tree import DecisionTreeRegressor
 
 
 #fixed random seed for reproducibility
 RANDOM_SEED = 26
 np.random.seed(RANDOM_SEED)
 
+# Load data
+def load_data(csv_path):
+    df = pd.read_csv(csv_path)
+    df['date'] = pd.to_datetime(df['date'])
+    df = df.sort_values('date')
+    return df
 
+# Train Decision Tree and forecast future inflation
+def decision_tree_forecast(df, forecast_start='2026-04-01', forecast_end='2031-04-01', max_depth=5):
+    # Use all data up to 2024-12-31 for training
+    train_df = df[df['date'] <= '2024-12-31']
+
+    # X = time steps, y = inflation
+    X_train = np.arange(len(train_df)).reshape(-1, 1)
+    y_train = train_df['inflation_rate'].values
+
+    # Train model
+    model = DecisionTreeRegressor(max_depth=max_depth, random_state=42)
+    model.fit(X_train, y_train)
+
+    # Determine forecast horizon
+    last_index = len(train_df)
+    # Create monthly dates for forecast
+    forecast_dates = pd.date_range(start=forecast_start, end=forecast_end, freq='MS')
+    X_forecast = np.arange(last_index, last_index + len(forecast_dates)).reshape(-1, 1)
+
+    # Predict
+    forecast_values = model.predict(X_forecast)
+
+    # Return as DataFrame
+    forecast_df = pd.DataFrame({
+        'date': forecast_dates,
+        'predicted_inflation': forecast_values
+    })
+
+    return forecast_df
+
+# Example usage
+df = load_data("inflation.csv")
+forecast_df = decision_tree_forecast(df)
+
+print(forecast_df)
+
+"""
 # Scaling Factor for Workforce Simplification
 # Actual UK workforce ~ 34 million. Simplified workforce = 100,000.
 # All financial inputs must be scaled down by this factor.
@@ -161,3 +205,4 @@ plt.legend()
 plt.grid(axis='y', alpha=0.5)
 plt.savefig('Net_Fiscal_Postion.png')
 plt.show()
+"""
