@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 RANDOM_SEED = 26
 np.random.seed(RANDOM_SEED)
 
+
 # Scaling Factor for Workforce Simplification
 # Actual UK workforce ~ 34 million. Simplified workforce = 100,000.
 # All financial inputs must be scaled down by this factor.

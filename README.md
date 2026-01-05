@@ -1,1 +1,2 @@
-This is a repository dedicated to the final project for DAT5501
+This is a repository dedicated to the final project for DAT5501.
+This project focuses on exploring how post-2025 UK budget tax changes, under different inflation scenarios, will affect demand for electric vehicles and projected revenues of EV companies in the UK
