@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
-from sklearn.tree import DecisionTreeRegressor
 from sklearn.metrics import mean_absolute_error
 from statsmodels.tsa.arima.model import ARIMA
 
@@ -39,30 +38,12 @@ def arima_model(train, test, order=(1,1,1)):
 
     return mae
 
-
-def decision_tree_model(train, test, max_depth=5):
-    X_train = np.arange(len(train)).reshape(-1, 1)
-    y_train = train['inflation_rate'].values
-
-    X_test = np.arange(len(train), len(train) + len(test)).reshape(-1, 1)
-    y_test = test['inflation_rate'].values
-
-    model = DecisionTreeRegressor(max_depth=max_depth, random_state=42)
-    model.fit(X_train, y_train)
-
-    preds = model.predict(X_test)
-    mae = mean_absolute_error(y_test, preds)
-
-    return mae
-
 def evaluate_models(csv_path):
     train, test = load_and_split_data(csv_path)
 
     results = {
         "Regression": regression_model(train, test),
-        "ARIMA": arima_model(train, test),
-        "Decision Tree": decision_tree_model(train, test)
-    }
+        "ARIMA": arima_model(train, test),}
 
     best_model = min(results, key=results.get)
 

@@ -1,55 +1,55 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from sklearn.tree import DecisionTreeRegressor
-
+from statsmodels.tsa.arima.model import ARIMA
 
 #fixed random seed for reproducibility
 RANDOM_SEED = 26
 np.random.seed(RANDOM_SEED)
 
-# Load data
-def load_data(csv_path):
+def train_and_forecast_arima(
+    csv_path,
+    start_forecast="2026-04-01",
+    end_forecast="2031-04-01",
+    order=(1, 1, 1)
+):
+    # Load data
     df = pd.read_csv(csv_path)
     df['date'] = pd.to_datetime(df['date'])
     df = df.sort_values('date')
-    return df
+    df.set_index('date', inplace=True)
 
-# Train Decision Tree and forecast future inflation
-def decision_tree_forecast(df, forecast_start='2026-04-01', forecast_end='2031-04-01', max_depth=5):
-    # Use all data up to 2024-12-31 for training
-    train_df = df[df['date'] <= '2024-12-31']
+    inflation_series = df['inflation_rate']
 
-    # X = time steps, y = inflation
-    X_train = np.arange(len(train_df)).reshape(-1, 1)
-    y_train = train_df['inflation_rate'].values
+    # Fit ARIMA on ALL available data
+    model = ARIMA(inflation_series, order=order)
+    fitted_model = model.fit()
 
-    # Train model
-    model = DecisionTreeRegressor(max_depth=max_depth, random_state=42)
-    model.fit(X_train, y_train)
+    # Create forecast index (monthly)
+    forecast_index = pd.date_range(
+        start=start_forecast,
+        end=end_forecast,
+        freq='MS'
+    )
 
-    # Determine forecast horizon
-    last_index = len(train_df)
-    # Create monthly dates for forecast
-    forecast_dates = pd.date_range(start=forecast_start, end=forecast_end, freq='MS')
-    X_forecast = np.arange(last_index, last_index + len(forecast_dates)).reshape(-1, 1)
+    # Forecast
+    forecast = fitted_model.forecast(steps=len(forecast_index))
 
-    # Predict
-    forecast_values = model.predict(X_forecast)
-
-    # Return as DataFrame
+    # Wrap into DataFrame
     forecast_df = pd.DataFrame({
-        'date': forecast_dates,
-        'predicted_inflation': forecast_values
+        "date": forecast_index,
+        "predicted_inflation": forecast.values
     })
 
     return forecast_df
 
-# Example usage
-df = load_data("inflation.csv")
-forecast_df = decision_tree_forecast(df)
+forecast_df = train_and_forecast_arima(
+    csv_path="inflation.csv",
+    order=(1, 1, 1)
+)
 
-print(forecast_df)
+print(forecast_df.head())
+print(forecast_df.tail())
 
 """
 # Scaling Factor for Workforce Simplification
