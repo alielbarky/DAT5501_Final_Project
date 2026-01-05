@@ -2,5 +2,5 @@ pandas
 numpy
 pytest
 matplotlib
-sickit-learn
+scikit-learn
 statsmodels
