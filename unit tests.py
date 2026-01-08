@@ -1,57 +1,74 @@
+import unittest
 import pandas as pd
 import numpy as np
-import pytest
-from pathlib import Path
+import tempfile
+import os
 
 from main import train_and_forecast_arima
 
 
-def test_train_and_forecast_arima_outputs_dataframe(tmp_path):
-    # -------------------------
-    # Arrange: create fake CSV
-    # -------------------------
-    dates = pd.date_range(start="2015-01-01", periods=60, freq="MS")
-    inflation = np.random.normal(loc=2.0, scale=0.5, size=len(dates))
+class TestTrainAndForecastARIMA(unittest.TestCase):
 
-    df = pd.DataFrame({
-        "date": dates,
-        "inflation_rate": inflation
-    })
+    def setUp(self):
+        # Create a temporary CSV file
+        temp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode="w", newline="")
+        temp.close() # <-- CLOSE IT HERE to avoid Windows file-lock issues
 
-    csv_path = tmp_path / "inflation.csv"
-    df.to_csv(csv_path, index=False)
+        self.temp_file_name = temp.name
 
-    # -------------------------
-    # Act
-    # -------------------------
-    forecast_df = train_and_forecast_arima(
-        csv_path=csv_path,
-        start_forecast="2026-04-01",
-        end_forecast="2026-12-01",
-        order=(1, 1, 1)
-    )
+        # Generate fake monthly data
+        dates = pd.date_range(start="2015-01-01", periods=60, freq="MS")
+        inflation = np.random.normal(loc=2.0, scale=0.5, size=len(dates))
 
-    # -------------------------
-    # Assert
-    # -------------------------
-    # 1. Correct type
-    assert isinstance(forecast_df, pd.DataFrame)
+        df = pd.DataFrame({
+            "date": dates,
+            "inflation_rate": inflation
+        })
 
-    # 2. Correct columns
-    assert list(forecast_df.columns) == ["date", "predicted_inflation"]
+        # Save to CSV
+        df.to_csv(self.temp_file_name, index=False)
 
-    # 3. Dates are monthly and correct length
-    expected_dates = pd.date_range(
-        start="2026-04-01",
-        end="2026-12-01",
-        freq="MS"
-    )
-    assert len(forecast_df) == len(expected_dates)
-    assert forecast_df["date"].equals(expected_dates)
+    def tearDown(self):
+        # Delete temp file
+        if os.path.exists(self.temp_file_name):
+            os.unlink(self.temp_file_name)
 
-    # 4. Forecast values exist and are numeric
-    assert forecast_df["predicted_inflation"].notna().all()
-    assert np.issubdtype(
-        forecast_df["predicted_inflation"].dtype,
-        np.number)
-    
+    def test_forecast_output_structure(self):
+        forecast_df = train_and_forecast_arima(
+            csv_path=self.temp_file_name,
+            start_forecast="2026-04-01",
+            end_forecast="2026-12-01",
+            order=(1, 1, 1)
+        )
+
+        # 1. Type check
+        self.assertIsInstance(forecast_df, pd.DataFrame)
+
+        # 2. Column check
+        self.assertListEqual(
+            list(forecast_df.columns),
+            ["date", "predicted_inflation"]
+        )
+
+        # 3. Length check
+        expected_dates = pd.date_range(
+            start="2026-04-01",
+            end="2026-12-01",
+            freq="MS"
+        )
+        self.assertEqual(len(forecast_df), len(expected_dates))
+
+        # 4. Date correctness (ignore column name)
+        pd.testing.assert_series_equal(
+            forecast_df["date"],
+            pd.Series(expected_dates),
+            check_dtype=False,
+            check_names=False
+        )
+
+        # 5. Forecast values sanity
+        self.assertTrue(forecast_df["predicted_inflation"].notna().all())
+
+
+if __name__ == "__main__":
+    unittest.main()

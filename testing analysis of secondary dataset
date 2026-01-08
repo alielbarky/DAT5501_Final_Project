@@ -1,41 +1,143 @@
+import re
+from pathlib import Path
 import pandas as pd
 
-income_raw = pd.read_excel(
-    "data/raw/tfl income statement.xlsx",
-    sheet_name="0028 Income Statement with foot"
+# =============================
+# PATHS (explicit + clear)
+# =============================
+TRENDS_RAW_PATH = Path("data/raw/tfl-transport-trends-data.xls")
+INCOME_RAW_PATH = Path("data/raw/tfl income statement.xlsx")
+
+PROCESSED_DIR = Path("data/processed")
+PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+
+TRENDS_OUT_PATH = PROCESSED_DIR / "tfl_public_transport_journey_stages_annual.csv"
+INCOME_OUT_PATH = PROCESSED_DIR / "tfl_income_annual.csv"
+
+# =============================
+# 1) TfL Transport Trends (Sheet '4')
+# =============================
+# - Headers start on Excel row 5 => header=4
+# - Sheet contains two tables side-by-side; left table (millions) is columns A:G
+# - We only need: Year + Total (public transport journey stages, millions)
+
+tfl_trends_sheet4_df = pd.read_excel(
+    TRENDS_RAW_PATH,
+    sheet_name="4",
+    header=4,
+    usecols="A:G"
 )
 
-# First column contains row labels
-income_raw = income_raw.rename(columns={income_raw.columns[0]: "metric"})
+# Clean trailing spaces in headers
+tfl_trends_sheet4_df.columns = tfl_trends_sheet4_df.columns.str.strip()
 
-# Extract passenger income row
-passenger_income = income_raw[
-    income_raw["metric"].str.contains("Passenger income", case=False, na=False)
-]
-
-# Transpose years into rows
-passenger_income = (
-    passenger_income
-    .drop(columns="metric")
-    .T
-    .reset_index()
+tfl_public_transport_journeys_annual_df = (
+    tfl_trends_sheet4_df[["Year", "Total"]]
     .rename(columns={
-        "index": "financial_year",
-        passenger_income.columns[1]: "passenger_income_m"
+        "Year": "financial_year",
+        "Total": "public_transport_journey_stages_m"
     })
+    .dropna(subset=["financial_year"])
 )
 
-import pandas as pd
+# Save to file (clear where it is stored)
+tfl_public_transport_journeys_annual_df.to_csv(TRENDS_OUT_PATH, index=False)
 
-journeys = pd.read_excel(
-    "data/raw/tfl-transport-trends-data.xls",
-    sheet_name="1"
+print("✅ Trends extracted")
+print(f"DataFrame name: tfl_public_transport_journeys_annual_df")
+print(f"Saved file: {TRENDS_OUT_PATH.resolve()}")
+print(tfl_public_transport_journeys_annual_df.head(), "\n")
+
+
+# =============================
+# 2) TfL Income Statement (headers NOT first row)
+# =============================
+# We will:
+# - Read the sheet without headers
+# - Find the row that contains financial year columns like 2015/16, 2016/17...
+# - Re-read using that row as the header
+# - Extract key rows (Passenger income, and Total income if present)
+# - Output tidy annual table
+
+INCOME_SHEET = "0028 Income Statement with foot"
+
+# Read with no header so we can detect where headers actually are
+income_raw_noheader = pd.read_excel(
+    INCOME_RAW_PATH,
+    sheet_name=INCOME_SHEET,
+    header=None
 )
 
-journeys = journeys[[
-    "Year",
-    "Total passenger journeys (millions)"
-]].rename(columns={
-    "Year": "year",
-    "Total passenger journeys (millions)": "passenger_journeys_m"
+# Helper: detect header row by looking for multiple "YYYY/YY" patterns in a row
+fy_pattern = re.compile(r"^\d{4}/\d{2}$")
+
+header_row_idx = None
+for i in range(0, min(25, len(income_raw_noheader))):
+    row_vals = income_raw_noheader.iloc[i].astype(str).str.strip().tolist()
+    fy_hits = sum(1 for v in row_vals if fy_pattern.match(v))
+    if fy_hits >= 3: # threshold: row looks like a financial year header row
+        header_row_idx = i
+        break
+
+if header_row_idx is None:
+    raise ValueError(
+        "Could not detect the financial year header row in the income statement. "
+        "Open the sheet and check where the '2015/16'-style headers start."
+    )
+
+# Re-read using detected header row
+income_df = pd.read_excel(
+    INCOME_RAW_PATH,
+    sheet_name=INCOME_SHEET,
+    header=header_row_idx
+)
+
+# First column is the metric labels (e.g., Passenger income)
+metric_col = income_df.columns[0]
+income_df = income_df.rename(columns={metric_col: "metric"})
+income_df["metric"] = income_df["metric"].astype(str).str.strip()
+
+# Identify which columns are financial years
+fy_cols = [c for c in income_df.columns if isinstance(c, str) and fy_pattern.match(c.strip())]
+
+if not fy_cols:
+    raise ValueError(
+        "Detected income statement header row, but couldn't find any financial-year columns like '2015/16'."
+    )
+
+# Extract key metrics
+# Minimum required: Passenger income
+passenger_row = income_df[income_df["metric"].str.contains("Passenger income", case=False, na=False)]
+if passenger_row.empty:
+    raise ValueError("Could not find a 'Passenger income' row in the income statement sheet.")
+
+# Optional: Total income (different sheets sometimes label this differently)
+total_row = income_df[income_df["metric"].str.contains("Total", case=False, na=False)]
+
+# Build tidy output: financial_year + passenger_income (+ optional total_income)
+tfl_income_annual_df = pd.DataFrame({
+    "financial_year": fy_cols,
+    "passenger_income_m": passenger_row.iloc[0][fy_cols].values,
 })
+
+# If we can find a good total income row, add it (only if it’s clearly a single row)
+# (We keep this conservative so we don't accidentally pick a random "Total ..." line.)
+if len(total_row) == 1:
+    tfl_income_annual_df["total_income_m"] = total_row.iloc[0][fy_cols].values
+
+# Save to file
+tfl_income_annual_df.to_csv(INCOME_OUT_PATH, index=False)
+
+print("✅ Income Statement extracted")
+print(f"Detected header row index (0-based): {header_row_idx}")
+print(f"DataFrame name: tfl_income_annual_df")
+print(f"Saved file: {INCOME_OUT_PATH.resolve()}")
+print(tfl_income_annual_df.head(), "\n")
+
+
+# =============================
+# Summary (what got stored where)
+# =============================
+print("=== STORED OUTPUTS ===")
+print(f"1) {TRENDS_OUT_PATH} (from {TRENDS_RAW_PATH.name}, sheet '4')")
+print(f"2) {INCOME_OUT_PATH} (from {INCOME_RAW_PATH.name}, sheet '{INCOME_SHEET}')")
