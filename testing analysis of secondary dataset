@@ -1,0 +1,41 @@
+import pandas as pd
+
+income_raw = pd.read_excel(
+    "data/raw/tfl income statement.xlsx",
+    sheet_name="0028 Income Statement with foot"
+)
+
+# First column contains row labels
+income_raw = income_raw.rename(columns={income_raw.columns[0]: "metric"})
+
+# Extract passenger income row
+passenger_income = income_raw[
+    income_raw["metric"].str.contains("Passenger income", case=False, na=False)
+]
+
+# Transpose years into rows
+passenger_income = (
+    passenger_income
+    .drop(columns="metric")
+    .T
+    .reset_index()
+    .rename(columns={
+        "index": "financial_year",
+        passenger_income.columns[1]: "passenger_income_m"
+    })
+)
+
+import pandas as pd
+
+journeys = pd.read_excel(
+    "data/raw/tfl-transport-trends-data.xls",
+    sheet_name="1"
+)
+
+journeys = journeys[[
+    "Year",
+    "Total passenger journeys (millions)"
+]].rename(columns={
+    "Year": "year",
+    "Total passenger journeys (millions)": "passenger_journeys_m"
+})

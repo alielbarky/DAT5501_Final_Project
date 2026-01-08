@@ -3,9 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from statsmodels.tsa.arima.model import ARIMA
 
-#fixed random seed for reproducibility
-RANDOM_SEED = 26
-np.random.seed(RANDOM_SEED)
+
 
 def train_and_forecast_arima(
     csv_path,
@@ -47,7 +45,7 @@ forecast_df = train_and_forecast_arima(
     csv_path="data\processed\inflation.csv",
     order=(1, 1, 1)
 )
-
+forecast_df.to_csv("projected_inflation.csv", index=False)
 print(forecast_df.head())
 print(forecast_df.tail())
 
