@@ -2,9 +2,7 @@ import re
 from pathlib import Path
 import pandas as pd
 
-# =============================
-# PATHS (explicit + clear)
-# =============================
+#define filepaths
 TRENDS_RAW_PATH = Path("data/raw/tfl-transport-trends-data.xls")
 INCOME_RAW_PATH = Path("data/raw/tfl income statement.xlsx")
 
@@ -14,19 +12,14 @@ PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 TRENDS_OUT_PATH = PROCESSED_DIR / "tfl_public_transport_journey_stages_annual.csv"
 INCOME_OUT_PATH = PROCESSED_DIR / "tfl_income_annual.csv"
 
-# =============================
-# 1) TfL Transport Trends (Sheet '4')
-# =============================
-# - Headers start on Excel row 5 => header=4
-# - Sheet contains two tables side-by-side; left table (millions) is columns A:G
-# - We only need: Year + Total (public transport journey stages, millions)
+#Headers start on Excel row 5 so header=4
+# Year + Total (public transport journey stages, millions)
 
 tfl_trends_sheet4_df = pd.read_excel(
     TRENDS_RAW_PATH,
     sheet_name="4",
     header=4,
-    usecols="A:G"
-)
+    usecols="A:G")
 
 # Clean trailing spaces in headers
 tfl_trends_sheet4_df.columns = tfl_trends_sheet4_df.columns.str.strip()

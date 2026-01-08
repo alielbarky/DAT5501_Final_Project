@@ -40,7 +40,7 @@ def polynomial_workflow(train, test):
         p = np.poly1d(coeffs)
         y_pred = p(X_test)
         
-        # Metrics
+        #metrics
         num_params = order + 1
         chi2_dof, bic, mae = compute_metrics(y_test, y_pred, num_params)
         
@@ -54,7 +54,7 @@ def polynomial_workflow(train, test):
             'preds': y_pred
         })
     
-    # Identify best based on MAE
+    # Identify best based on lowest mean absolute erroer
     best_poly = min(results, key=lambda x: x['mae'])
     return results, best_poly
 
@@ -65,16 +65,14 @@ def arima_workflow(train, test, order=(1,1,1)):
     mae = mean_absolute_error(test['inflation_rate'], preds)
     return preds, mae
 
-# --- Execution ---
+#execute
 train, test = load_and_split_data("data\processed\inflation.csv")
 
-# Process Polynomials (1-9)
 poly_all_results, best_poly = polynomial_workflow(train, test)
 
-# Process ARIMA
 arima_preds, arima_mae = arima_workflow(train, test)
 
-# Identify Best Overall
+# identify best overall model
 if best_poly['mae'] < arima_mae:
     best_overall_name = f"Polynomial (Order {best_poly['order']})"
     best_overall_mae = best_poly['mae']
@@ -82,8 +80,8 @@ else:
     best_overall_name = "ARIMA"
     best_overall_mae = arima_mae
 
-# --- Print Outputs ---
-print(f"--- Best Polynomial Model Details ---")
+#print outputs
+print(f"Best Polynomial Model Details")
 print(f"Order: {best_poly['order']}")
 print(f"Coefficients: {best_poly['coeffs']}")
 print("Covariance Matrix of Coefficients:")
@@ -92,8 +90,8 @@ print(f"Chi-squared per degree of freedom (test): {best_poly['chi2_dof']:.4f}")
 print(f"BIC (test): {best_poly['bic']:.4f}")
 print(f"MAE (test): {best_poly['mae']:.4f}")
 
-print(f"\n--- ARIMA Model ---")
+print(f"\n ARIMA Model")
 print(f"Forecast MAE (test): {arima_mae:.4f}")
 
-print(f"\n--- Comparison ---")
+print("")
 print(f"the best overall model is {best_overall_name} with a MAE of {best_overall_mae:.4f}")
