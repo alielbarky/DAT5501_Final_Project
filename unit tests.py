@@ -4,7 +4,7 @@ import numpy as np
 import tempfile
 import os
 
-from main import train_and_forecast_arima
+from ARIMA_projection import train_and_forecast_arima
 
 
 class TestTrainAndForecastARIMA(unittest.TestCase):
@@ -47,8 +47,7 @@ class TestTrainAndForecastARIMA(unittest.TestCase):
         # 2. Column check
         self.assertListEqual(
             list(forecast_df.columns),
-            ["date", "predicted_inflation"]
-        )
+            ["date", "predicted_inflation"])
 
         # 3. Length check
         expected_dates = pd.date_range(
@@ -63,12 +62,9 @@ class TestTrainAndForecastARIMA(unittest.TestCase):
             forecast_df["date"],
             pd.Series(expected_dates),
             check_dtype=False,
-            check_names=False
-        )
-
+            check_names=False)
         # 5. Forecast values sanity
         self.assertTrue(forecast_df["predicted_inflation"].notna().all())
-
 
 if __name__ == "__main__":
     unittest.main()

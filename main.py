@@ -1,206 +1,263 @@
-import numpy as np
 import pandas as pd
+from pathlib import Path
 import matplotlib.pyplot as plt
-from statsmodels.tsa.arima.model import ARIMA
 
+# =============================
+# LOAD DATA
+# =============================
+DATA = Path("data/processed")
 
+income = pd.read_csv(DATA / "tfl_income_annual.csv")
+inflation_hist = pd.read_csv(DATA / "inflation.csv", parse_dates=["date"])
+inflation_proj = pd.read_csv(DATA / "projected_inflation.csv", parse_dates=["date"])
 
-def train_and_forecast_arima(
-    csv_path,
-    start_forecast="2026-04-01",
-    end_forecast="2031-04-01",
-    order=(1, 1, 1)
-):
-    # Load data
-    df = pd.read_csv(csv_path)
-    df['date'] = pd.to_datetime(df['date'])
-    df = df.sort_values('date')
-    df.set_index('date', inplace=True)
+# =============================
+# CLEAN & COMBINE MONTHLY INFLATION
+# =============================
 
-    inflation_series = df['inflation_rate']
+# Historical: keep up to Nov 2025
+inflation_hist = inflation_hist[
+    inflation_hist["date"] <= pd.Timestamp("2025-11-30")
+].copy()
 
-    # Fit ARIMA on ALL available data
-    model = ARIMA(inflation_series, order=order)
-    fitted_model = model.fit()
+inflation_hist["inflation"] = inflation_hist["inflation_rate"]
 
-    # Create forecast index (monthly)
-    forecast_index = pd.date_range(
-        start=start_forecast,
-        end=end_forecast,
-        freq='MS'
-    )
+# Projected: keep from Apr 2026 onward
+inflation_proj = inflation_proj[
+    inflation_proj["date"] >= pd.Timestamp("2026-04-01")
+].copy()
 
-    # Forecast
-    forecast = fitted_model.forecast(steps=len(forecast_index))
+inflation_proj["inflation"] = inflation_proj["predicted_inflation"]
 
-    # Wrap into DataFrame
-    forecast_df = pd.DataFrame({
-        "date": forecast_index,
-        "predicted_inflation": forecast.values
+# Combine monthly inflation
+inflation_all = pd.concat(
+    [inflation_hist[["date", "inflation"]],
+     inflation_proj[["date", "inflation"]]],
+    ignore_index=True
+)
+
+# =============================
+# MONTHLY → FINANCIAL YEAR
+# =============================
+fy_start = inflation_all["date"].dt.year.where(
+    inflation_all["date"].dt.month >= 4,
+    inflation_all["date"].dt.year - 1
+)
+
+inflation_all["financial_year"] = (
+    fy_start.astype(str)
+    + "/"
+    + (fy_start + 1).astype(str).str[-2:]
+)
+
+annual_inflation = (
+    inflation_all
+    .groupby("financial_year")["inflation"]
+    .mean()
+    .reset_index()
+    .rename(columns={"inflation": "avg_inflation"})
+)
+
+# =============================
+# REAL INCOME (HISTORICAL)
+# =============================
+income["financial_year"] = income["financial_year"].str.strip()
+
+df = income.merge(
+    annual_inflation,
+    on="financial_year",
+    how="left"
+)
+
+df["inflation_factor"] = 1 + df["avg_inflation"] / 100
+df["price_index"] = df["inflation_factor"].cumprod()
+df["price_index"] = 100 * df["price_index"] / df["price_index"].iloc[0]
+
+df["real_passenger_income_m"] = (
+    df["passenger_income_m"] * 100 / df["price_index"]
+)
+
+# =============================
+# EXTEND TO 2030/31 (STAGNATION)
+# =============================
+last_nominal_income = df["passenger_income_m"].iloc[-1]
+last_price_index = df["price_index"].iloc[-1]
+
+future_years = annual_inflation[
+    ~annual_inflation["financial_year"].isin(df["financial_year"])
+].sort_values("financial_year")
+
+rows = []
+current_price_index = last_price_index
+
+for _, row in future_years.iterrows():
+    inflation_factor = 1 + row["avg_inflation"] / 100
+    current_price_index *= inflation_factor
+
+    rows.append({
+        "financial_year": row["financial_year"],
+        "passenger_income_m": last_nominal_income,
+        "price_index": current_price_index,
+        "real_passenger_income_m": last_nominal_income * 100 / current_price_index
     })
 
-    return forecast_df
+df_future = pd.DataFrame(rows)
 
-forecast_df = train_and_forecast_arima(
-    csv_path="data\processed\inflation.csv",
-    order=(1, 1, 1)
+df_all = pd.concat([df, df_future], ignore_index=True)
+
+# =============================
+# KEY FIGURE: REAL PASSENGER INCOME (FIXED ORDER)
+# =============================
+
+# Build projected inflation -> financial year -> annual avg inflation
+fy_start_proj = inflation_proj["date"].dt.year.where(
+    inflation_proj["date"].dt.month >= 4,
+    inflation_proj["date"].dt.year - 1
 )
-forecast_df.to_csv("projected_inflation.csv", index=False)
-print(forecast_df.head())
-print(forecast_df.tail())
 
-"""
-# Scaling Factor for Workforce Simplification
-# Actual UK workforce ~ 34 million. Simplified workforce = 100,000.
-# All financial inputs must be scaled down by this factor.
-ACTUAL_WORKFORCE = 34_200_000
-SIMPLIFIED_WORKFORCE = 100_000
-SCALING_FACTOR = SIMPLIFIED_WORKFORCE / ACTUAL_WORKFORCE 
+inflation_proj["financial_year"] = (
+    fy_start_proj.astype(str)
+    + "/"
+    + (fy_start_proj + 1).astype(str).str[-2:]
+)
 
-# Time Horizon
-YEARS = 5 #until the tax freeze is over in 2031
+proj_annual = (
+    inflation_proj
+    .groupby("financial_year")["predicted_inflation"]
+    .mean()
+    .reset_index()
+    .rename(columns={"predicted_inflation": "avg_inflation"})
+)
 
-# Spending multiplier time  lag distribution
-# Year 1: 20%, Year 2: 30%, Year 3: 25%, Year 4: 15%, Year 5: 10%
-LAG_SHARES = np.array([0.20, 0.30, 0.25, 0.15, 0.10])
+# Helper for chronological sorting/filtering
+def fy_start_year(fy: str) -> int:
+    return int(str(fy).split("/")[0])
 
-#The mean values represent the approximate annual financial impact of the stated policies.
-#All values are in billions of GBP per year and scaled down for the simplified model.
+df["fy_start"] = df["financial_year"].apply(fy_start_year)
+proj_annual["fy_start"] = proj_annual["financial_year"].apply(fy_start_year)
 
-#policy 1 Increase spending on public services by 32 billion per year
-#policy 2: Removal of 2 child benefit cap (Estimated annual cost: 2.5 billion)
-# Total Spending: 34.5 billion
-SPENDING_PARAMS = {'mean': (32 + 2.5) * SCALING_FACTOR, 'std': 5.0 * SCALING_FACTOR}
+last_income_fy_start = df["fy_start"].max()
 
-#policy 3:Tax per mile driven (Estimated annual revenue of 375 million for EVs and about 125 million for PHEV)
-TAX_PER_MILE_PARAMS={'mean': 0.5 , 'std': 0.15}
+# Keep only FYs after the last income year
+future_years = proj_annual[proj_annual["fy_start"] > last_income_fy_start].copy()
+future_years = future_years.sort_values("fy_start")
 
-#policy 4:fiscal drag due to tax freezes (estimated 29.3 billion according to OBR)
-FISCAL_DRAG_PARAMS={'mean' : 29.3 * SCALING_FACTOR, 'std': 3.5 * SCALING_FACTOR}
+# Optional: drop FY 2031/32 if it appears (April 2031 creates it)
+future_years = future_years[future_years["fy_start"] <= 2030]
 
-# Keynesian Multiplier and Propensity to Consume
-MPC_PARAMS = {'mean': 0.3,'std': 0.2} #taken as 0.3 due  to low consumer confidence in the UK
+# Extend price index and real income (nominal stagnates)
+last_nominal_income = df["passenger_income_m"].iloc[-1]
+current_price_index = df["price_index"].iloc[-1]
 
-# Multiplier: K = 1 / (1 - MPC). sample MPC and calculate K from it.
-# clip MPC because it is always between 0 and 1
+rows = []
+for _, row in future_years.iterrows():
+    inflation_factor = 1 + row["avg_inflation"] / 100
+    current_price_index *= inflation_factor
 
-# Multiplier Uncertainty (Used as an alternative if not sampling MPC, but we use MPC)
-# MULTIPLIER_PARAMS = {'mean': 1.5, 'std': 0.5}
+    rows.append({
+        "financial_year": row["financial_year"],
+        "passenger_income_m": last_nominal_income,
+        "price_index": current_price_index,
+        "real_passenger_income_m": last_nominal_income * 100 / current_price_index,
+        "fy_start": row["fy_start"],
+    })
 
-# Monte Carlo Requirements
-N_SIMULATIONS = 20000
+df_future = pd.DataFrame(rows)
 
-#Running the actual simulation
+df_all = pd.concat([df, df_future], ignore_index=True)
+df_all = df_all.sort_values("fy_start").reset_index(drop=True)
 
-# Array to store results
-results = []
+# Plot key figure
 
-for i in range(N_SIMULATIONS):
-    #Sample Parameters for the Simulation run
-    
-    # Sample MPC and calculate Multipliers
-    mpc = np.random.normal(MPC_PARAMS['mean'], MPC_PARAMS['std'])
-    mpc = np.clip(mpc, 0.01, 0.99) # MPC must be between 0 and 1
-    
-    kg = 1 / (1 - mpc)          # Spending Multiplier
-    kt = -mpc / (1 - mpc)       # Tax Multiplier
-    
-    # Sample Annual Spending 
-    gov_spending_annual = max(0, np.random.normal(SPENDING_PARAMS['mean'], SPENDING_PARAMS['std']))
-    
-    # Sample Annual Revenue Components
-    fiscal_drag_annual = max(0, np.random.normal(FISCAL_DRAG_PARAMS['mean'], FISCAL_DRAG_PARAMS['std'])) * SCALING_FACTOR
-    tax_per_mile_annual = max(0, np.random.normal(TAX_PER_MILE_PARAMS['mean'], TAX_PER_MILE_PARAMS['std'])) * SCALING_FACTOR
-    
-
-    #year by year aggregation
-    total_fiscal_position = 0
-    tax_gdp_effect = 0
-    spending_gdp_effect = 0
-    
-    # Loop over the 5 years to apply time-specific policy
-    for year in range(1, YEARS + 1): 
-        
-        #tax Revenue Calculation for year T
-        current_year_revenue = fiscal_drag_annual # Fiscal drag is always present
-        
-        # Tax Per Mile is only active from Year 3 (April 2028 onwards) onwards
-        if year >= 3:
-            current_year_revenue += tax_per_mile_annual
-        
-        # Fiscal Position = Revenue - Spending (T - G)
-        annual_fiscal_position = current_year_revenue - gov_spending_annual
-        total_fiscal_position += annual_fiscal_position
-        
-        #GDP effect
-        #tax GDP effect = revenue * KT
-        # Assumed to be immediate (no lag applied to withdrawal)
-        tax_gdp_effect += current_year_revenue * kt
-        
-        #Spending GDP Effect (Expansionary Injection with Time Lag)
-        delta_G = gov_spending_annual
-        base_gdp_impact = delta_G * kg
-        
-        # Determine which lag shares apply to this year's spending
-        # We look forward from the current year.
-        lags_to_apply = LAG_SHARES[:YEARS - year + 1]
-        total_lag_share = lags_to_apply.sum()
-        
-        spending_gdp_effect += base_gdp_impact * total_lag_share
-        
-    # Net GDP Effect = Expansionary Force (G) + Contractionary Force (T)
-    total_net_gdp_effect = spending_gdp_effect + tax_gdp_effect
-
-    # Store the results
-    results.append({'Sim_ID': i, 'MPC': mpc, 'K_G': kg, 'K_T': kt, 'Annual_Spending': gov_spending_annual,
-    'Total_5Y_Fiscal_Position': total_fiscal_position, 'Total_5Y_GDP_Effect': total_net_gdp_effect })
-
-#store results list to a DataFrame
-df_results = pd.DataFrame(results)
-
-#gnenrate outputs
-#rescale the results back to actual worfkorce of 34 million
-df_results_actual = df_results.copy()
-df_results_actual['Total_5Y_Fiscal_Position_Actual'] = df_results_actual['Total_5Y_Fiscal_Position'] / SCALING_FACTOR
-df_results_actual['Total_5Y_GDP_Effect_Actual'] = df_results_actual['Total_5Y_GDP_Effect'] / SCALING_FACTOR
-
-#Summary Statistics
-
-total_fiscal = df_results_actual['Total_5Y_Fiscal_Position_Actual']
-
-#Mean
-mean_fiscal = total_fiscal.mean()
-mean_gdp = df_results_actual['Total_5Y_GDP_Effect_Actual'].mean()
-
-#Median
-median_fiscal = total_fiscal.median()
-
-#Probability of a surplus (Fiscal Position > 0)
-prob_surplus = (total_fiscal > 0).mean() * 100
-
-print("Cumulative 5 year impact in Billion of pounds")
-print("---")
-print(f"Total 5-Year Net Fiscal Position (surplus or deficit):")
-print(f" Mean: {mean_fiscal:,.2f} B£")
-print(f" Median: {median_fiscal:,.2f} B£")
-print(f" Probability of a Surplus: {prob_surplus:.2f}%")
-print(f"\nNet GDP effevt:")
-print(f" Mean GDP Boost: {mean_gdp:,.2f} B£")
-
-
-# Histogram of the Net Fiscal Position
 plt.figure(figsize=(10, 6))
-df_results_actual['Total_5Y_Fiscal_Position_Actual'].hist(bins=50, density=True, color='#1f77b4', edgecolor='black', alpha=0.7)
-total_fiscal.plot(kind='kde', color='red', linewidth=2)
-# Mark the mean and zero line
-plt.axvline(mean_fiscal, color='r', linestyle='dashed', linewidth=1, label=f'Mean: {mean_fiscal:.2f} B£')
-plt.axvline(0, color='k', linestyle='-', linewidth=1, label='Zero/Break-Even')
-#add title, labels to axes, and legend 
-plt.title('Monte Carlo Simulation: Distribution of Net 5-Year Fiscal Position', fontsize=14)
-plt.xlabel('Net Fiscal Position (Cumulative 5 Years, Billions GBP)', fontsize=12)
-plt.ylabel('Density', fontsize=12)
+
+plt.plot(
+    df_all["financial_year"],
+    df_all["real_passenger_income_m"],
+    linewidth=2,
+    label="Real passenger income (£m)"
+)
+
+# Mark start of projection (first year after last income year)
+proj_start_idx = df_all.index[df_all["fy_start"] == last_income_fy_start][0]
+plt.axvline(x=proj_start_idx, linestyle="--", linewidth=1, label="Start of projection")
+
+plt.xticks(rotation=45)
+plt.xlabel("Financial Year")
+plt.ylabel("Real Passenger Income (£m)")
+plt.title("TfL Real Passenger Income (Extended with Projected Inflation; Nominal Income Stagnates)")
+plt.grid(True, alpha=0.3)
 plt.legend()
-plt.grid(axis='y', alpha=0.5)
-plt.savefig('Net_Fiscal_Postion.png')
+plt.tight_layout()
+plt.savefig('TFL real income projection.png')
+
+#EXPORTS + HEADLINE METRICS (FOR REPORT)
+
+# 1) Save the modelling output table for use in report/appendix
+OUTPUT_DIR = DATA / "outputs"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+df_all.to_csv(OUTPUT_DIR / "tfl_real_income_extended_2015_2031.csv", index=False)
+
+# 2) Headline metrics (simple, report-ready)
+# - Change from first observed year to last observed year
+# - Change from last observed year to last projected year
+# - Total change across full horizon
+
+# Ensure chronological order for metrics
+if "fy_start" not in df_all.columns:
+    df_all["fy_start"] = df_all["financial_year"].apply(fy_start_year)
+
+df_all_sorted = df_all.sort_values("fy_start").reset_index(drop=True)
+
+first_year = df_all_sorted.iloc[0]
+last_observed = df_all_sorted[df_all_sorted["fy_start"] == last_income_fy_start].iloc[-1]
+last_projected = df_all_sorted.iloc[-1]
+
+def pct_change(a, b):
+    return (b / a - 1) * 100
+
+headline = {
+    "first_financial_year": first_year["financial_year"],
+    "last_observed_financial_year": last_observed["financial_year"],
+    "last_projected_financial_year": last_projected["financial_year"],
+    "real_income_first_m": float(first_year["real_passenger_income_m"]),
+    "real_income_last_observed_m": float(last_observed["real_passenger_income_m"]),
+    "real_income_last_projected_m": float(last_projected["real_passenger_income_m"]),
+    "pct_change_first_to_last_observed": float(pct_change(first_year["real_passenger_income_m"], last_observed["real_passenger_income_m"])),
+    "pct_change_last_observed_to_last_projected": float(pct_change(last_observed["real_passenger_income_m"], last_projected["real_passenger_income_m"])),
+    "pct_change_first_to_last_projected": float(pct_change(first_year["real_passenger_income_m"], last_projected["real_passenger_income_m"])),
+}
+
+headline_df = pd.DataFrame([headline])
+headline_df.to_csv(OUTPUT_DIR / "headline_metrics.csv", index=False)
+
+print("Saved outputs:")
+print("-", OUTPUT_DIR / "tfl_real_income_extended_2015_2031.csv")
+print("-", OUTPUT_DIR / "headline_metrics.csv")
+print("Headline metrics:")
+print(headline_df.T)
+
+# 3) Save the key figure to file (for report)
+FIG_PATH = OUTPUT_DIR / "figure_1_real_passenger_income.png"
+plt.figure(figsize=(10, 6))
+plt.plot(
+    df_all_sorted["financial_year"],
+    df_all_sorted["real_passenger_income_m"],
+    linewidth=2,
+    label="Real passenger income (£m)"
+)
+
+# Start of projection boundary
+boundary_idx = df_all_sorted.index[df_all_sorted["fy_start"] == last_income_fy_start][0]
+plt.axvline(x=boundary_idx, linestyle="--", linewidth=1, label="Start of projection")
+
+plt.xticks(rotation=45)
+plt.xlabel("Financial Year")
+plt.ylabel("Real Passenger Income (£m)")
+plt.title("TfL Real Passenger Income (Extended with Projected Inflation; Nominal Income Stagnates)")
+plt.grid(True, alpha=0.3)
+plt.legend()
+plt.tight_layout()
+plt.savefig(FIG_PATH, dpi=300)
 plt.show()
-"""

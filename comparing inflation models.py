@@ -97,39 +97,3 @@ print(f"Forecast MAE (test): {arima_mae:.4f}")
 
 print(f"\n--- Comparison ---")
 print(f"the best overall model is {best_overall_name} with a MAE of {best_overall_mae:.4f}")
-
-# --- Generate Plots ---
-orders = [r['order'] for r in poly_all_results]
-chi2s = [r['chi2_dof'] for r in poly_all_results]
-bics = [r['bic'] for r in poly_all_results]
-
-plt.figure(figsize=(12, 5))
-# Plot Chi^2/dof
-plt.subplot(1, 2, 1)
-plt.plot(orders, chi2s, marker='o', color='blue')
-plt.title(r'$\chi^2$ per Degree of Freedom vs Order')
-plt.xlabel('Polynomial Order')
-plt.ylabel(r'$\chi^2/dof$')
-plt.grid(True)
-
-# Plot BIC
-plt.subplot(1, 2, 2)
-plt.plot(orders, bics, marker='o', color='red')
-plt.title('BIC vs Order')
-plt.xlabel('Polynomial Order')
-plt.ylabel('BIC')
-plt.grid(True)
-plt.tight_layout()
-plt.savefig('model_testing.png')
-
-# Forecast Comparison Plot
-plt.figure(figsize=(10, 6))
-plt.plot(test['date'], test['inflation_rate'], label='Actual Data', color='black', linewidth=1.5)
-plt.plot(test['date'], best_poly['preds'], label=f'Best Poly (Order {best_poly["order"]})', linestyle='--', color='blue')
-plt.plot(test['date'], arima_preds, label='ARIMA', linestyle=':', color='green')
-plt.title('UK Inflation Forecast Comparison')
-plt.xlabel('Date')
-plt.ylabel('Inflation Rate (%)')
-plt.legend()
-plt.grid(True, alpha=0.3)
-plt.savefig('forecast_comparison.png')
