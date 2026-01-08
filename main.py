@@ -44,7 +44,7 @@ def train_and_forecast_arima(
     return forecast_df
 
 forecast_df = train_and_forecast_arima(
-    csv_path="inflation.csv",
+    csv_path="data\processed\inflation.csv",
     order=(1, 1, 1)
 )
 

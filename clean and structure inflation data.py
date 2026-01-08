@@ -1,6 +1,6 @@
 import pandas as pd
 #load data and drop metadata rows
-raw = pd.read_excel("consumerpriceinflationdetailedreferencetables.xlsx", sheet_name="Table 37", header=None)
+raw = pd.read_excel("data\raw\consumerpriceinflationdetailedreferencetables.xlsx", sheet_name="Table 37", header=None)
 HEADER_ROW = 6
 raw = raw.iloc[HEADER_ROW:].reset_index(drop=True)
 

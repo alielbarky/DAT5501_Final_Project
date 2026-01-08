@@ -66,7 +66,7 @@ def arima_workflow(train, test, order=(1,1,1)):
     return preds, mae
 
 # --- Execution ---
-train, test = load_and_split_data("inflation.csv")
+train, test = load_and_split_data("data\processed\inflation.csv")
 
 # Process Polynomials (1-9)
 poly_all_results, best_poly = polynomial_workflow(train, test)
