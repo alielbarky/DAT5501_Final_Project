@@ -7,7 +7,7 @@ raw = raw.iloc[HEADER_ROW:].reset_index(drop=True)
 raw.columns = raw.iloc[0]
 df = raw.iloc[1:].reset_index(drop=True)
 
-#check the dataframe is as expected
+#check that the dataframe is as expected
 print(df)
 
 #filter for the columns we need
@@ -34,7 +34,7 @@ df["inflation_rate"] = (
 #final outputs
 output = df[["date", "inflation_rate"]].dropna()
 
-# --- Step 9: Save ---
+#save the file
 output.to_csv("inflation.csv", index=False)
 
 print("inflation.csv created successfully")

@@ -9,7 +9,8 @@ def load_and_split_data(csv_path):
     df = pd.read_csv(csv_path)
     df['date'] = pd.to_datetime(df['date'])
     df = df.sort_values('date').reset_index(drop=True)
-    # Splitting logic: Training <= 2013-01-01, Test > 2013-01-01 and <= 2019-01-01
+
+    # Split the data to train and test
     train = df[(df['date'] <= '2013-01-01')]
     test = df[(df['date'] > '2013-01-01') & (df['date'] <= '2019-01-01')]
     return train, test
@@ -54,10 +55,11 @@ def polynomial_workflow(train, test):
             'preds': y_pred
         })
    
-    # Identify best based on lowest mean absolute error
+    #identify the best polynomial model based on lowest mean absolute error
     best_poly = min(results, key=lambda x: x['mae'])
     return results, best_poly
 
+#define function for ARIMA model
 def arima_workflow(train, test, order=(1,1,1)):
     # Fit ARIMA (1,1,1)
     model = ARIMA(train['inflation_rate'], order=order).fit()
@@ -66,7 +68,6 @@ def arima_workflow(train, test, order=(1,1,1)):
     return preds, mae
 
 # Execute
-# Note: updated file path to point to the local directory
 train, test = load_and_split_data("data\processed\inflation.csv")
 
 poly_all_results, best_poly = polynomial_workflow(train, test)
@@ -81,7 +82,7 @@ else:
     best_overall_name = "ARIMA"
     best_overall_mae = arima_mae
 
-# Plotting the polynomials and actual data
+# Plotting the polynomials against actual data
 plt.plot(train['date'], train['inflation_rate'], label='Train Data', color='gray', alpha=0.4)
 plt.plot(test['date'], test['inflation_rate'], label='Actual Test Data', color='black', linewidth=2)
 

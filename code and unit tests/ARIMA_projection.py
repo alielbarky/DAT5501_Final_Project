@@ -43,5 +43,7 @@ forecast_df = train_and_forecast_arima(
     order=(1, 1, 1))
 
 forecast_df.to_csv("projected_inflation.csv", index=False)
+
+#print to check it ran as expected
 print(forecast_df.head())
 print(forecast_df.tail())

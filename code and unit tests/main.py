@@ -2,24 +2,22 @@ import pandas as pd
 from pathlib import Path
 import matplotlib.pyplot as plt
 
-# =============================
-# LOAD DATA
-# =============================
+#load data
 DATA = Path("data/processed")
 
 income = pd.read_csv(DATA / "tfl_income_annual.csv")
 inflation_hist = pd.read_csv(DATA / "inflation.csv", parse_dates=["date"])
 inflation_proj = pd.read_csv(DATA / "projected_inflation.csv", parse_dates=["date"])
 
-# =============================
-# CLEAN & COMBINE MONTHLY INFLATION
-# =============================
+#clean and combine monthly inflation
 
-# Historical: keep up to Nov 2025
+#historical inflation
+
 inflation_hist = inflation_hist[inflation_hist["date"] <= pd.Timestamp("2025-11-30")].copy()
 inflation_hist["inflation"] = inflation_hist["inflation_rate"]
 
-# Projected: keep from Apr 2026 onward (discard Dec 2025–Mar 2026)
+#projected inflation
+
 inflation_proj = inflation_proj[inflation_proj["date"] >= pd.Timestamp("2026-04-01")].copy()
 inflation_proj["inflation"] = inflation_proj["predicted_inflation"]
 
@@ -29,9 +27,7 @@ inflation_all = pd.concat(
     ignore_index=True,
 )
 
-# =============================
-# MONTHLY → FINANCIAL YEAR (ANNUAL AVG INFLATION)
-# =============================
+#monthly to financial year 
 fy_start = inflation_all["date"].dt.year.where(
     inflation_all["date"].dt.month >= 4,
     inflation_all["date"].dt.year - 1,
@@ -48,9 +44,8 @@ annual_inflation = (
     .rename(columns={"inflation": "avg_inflation"})
 )
 
-# =============================
-# REAL INCOME (HISTORICAL INCOME YEARS)
-# =============================
+#real income (historical)
+
 income["financial_year"] = income["financial_year"].astype(str).str.strip()
 
 df = income.merge(annual_inflation, on="financial_year", how="left")
@@ -58,14 +53,13 @@ df = income.merge(annual_inflation, on="financial_year", how="left")
 df["inflation_factor"] = 1 + df["avg_inflation"] / 100
 
 df["price_index"] = df["inflation_factor"].cumprod()
-# Rebase to first income year = 100
+
 df["price_index"] = 100 * df["price_index"] / df["price_index"].iloc[0]
 
 df["real_passenger_income_m"] = df["passenger_income_m"] * 100 / df["price_index"]
 
-# =============================
-# EXTEND TO 2030/31 (NOMINAL INCOME STAGNATES)
-# =============================
+
+#extend to 2030/31 assuming nominal income stagnates
 
 def fy_start_year(fy: str) -> int:
     return int(str(fy).split("/")[0])
@@ -105,17 +99,17 @@ df_future = pd.DataFrame(rows)
 df_all = pd.concat([df, df_future], ignore_index=True)
 df_all = df_all.sort_values("fy_start").reset_index(drop=True)
 
-# =============================
-# EXPORTS + HEADLINE METRICS (FOR REPORT)
-# =============================
+
+#exports + headline metrics
+
 OUTPUT_DIR = DATA / "outputs"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# 1) Save the modelling output table
+#Save the modelling output table
 OUT_TABLE = OUTPUT_DIR / "tfl_real_income_extended_2015_2031.csv"
 df_all.to_csv(OUT_TABLE, index=False)
 
-# 2) Headline metrics
+# Headline metrics
 first_year = df_all.iloc[0]
 last_observed = df_all[df_all["fy_start"] == last_income_fy_start].iloc[-1]
 last_projected = df_all.iloc[-1]
@@ -153,9 +147,8 @@ print("-", OUT_HEADLINE)
 print("Headline metrics:")
 print(headline_df.T)
 
-# =============================
-# KEY FIGURE (SAVED ONCE, NO DUPLICATION)
-# =============================
+
+#key figure generation
 FIG_PATH = OUTPUT_DIR / "figure_1_real_passenger_income.png"
 
 plt.figure(figsize=(10, 6))
@@ -182,13 +175,12 @@ plt.savefig(FIG_PATH, dpi=300)
 print("Saved figure:")
 print("-", FIG_PATH)
 
-# =============================
-# NEXT STEP: SENSITIVITY ANALYSIS (INFLATION SHOCK) + SUPPLEMENTAL FIGURE
-# =============================
-# Purpose: demonstrate result stability (S53) by testing how real income changes
-# under +/- 1 percentage point inflation in future years.
 
-# Build scenario paths only for projected years (beyond last observed income FY)
+#sensitivity analysis (inflation shock)
+#testing how real income changes
+#under +/- 1 percentage point inflation in future years.
+
+#build scenario paths only for projected years (beyond last observed income FY)
 base_future = future_fy_infl.copy()
 
 # Scenario definitions (annual inflation shock applied to the projected FY averages)
@@ -228,18 +220,18 @@ for scen_name, shock in scenarios.items():
 
 scenario_df = pd.DataFrame(scenario_rows)
 
-# Export sensitivity table
+#export sensitivity table
 OUT_SENS = OUTPUT_DIR / "sensitivity_inflation_shock.csv"
 scenario_df.to_csv(OUT_SENS, index=False)
 print("Saved sensitivity table:")
 print("-", OUT_SENS)
 
-# Plot supplemental figure: baseline vs +/- 1pp inflation (projected years only)
+#plot baseline vs +/- 1pp inflation (projected years only)
 FIG2_PATH = OUTPUT_DIR / "figure_2_sensitivity_inflation_shock.png"
 
 plt.figure(figsize=(10, 6))
 
-# Baseline full series from df_all
+#baseline full series from df_all
 plt.plot(
     df_all["financial_year"],
     df_all["real_passenger_income_m"],
@@ -274,12 +266,10 @@ plt.savefig(FIG2_PATH, dpi=300)
 print("Saved supplemental figure:")
 print("-", FIG2_PATH)
 
-# =============================
-# NEXT STEP: MODEL VALIDATION & DIAGNOSTICS (ROBUSTNESS CHECKS)
-# =============================
-# Purpose: demonstrate stability and transparency of results for assessment criteria.
+#model validation and diagnostics
+#demonstrate stability and transparency of results
 
-# 1) Check for missing values and basic integrity
+#check for missing values and basic integrity
 integrity_checks = {
     "rows_total": int(len(df_all)),
     "missing_avg_inflation": int(df_all["avg_inflation"].isna().sum()) if "avg_inflation" in df_all.columns else 0,
@@ -296,7 +286,7 @@ print(integrity_df.T)
 print("Saved integrity checks:")
 print("-", OUT_INTEGRITY)
 
-# 2) Alternative rebasing year (robustness test)
+
 # Rebase price index to a mid-series year (e.g. 2019/20) and recompute real income
 rebase_year = "2019/20"
 
@@ -319,8 +309,8 @@ if rebase_year in set(df_all["financial_year"]):
     print(f"Rebased outputs saved using base year {rebase_year}:")
     print("-", OUT_REBASE)
 
-# 3) Simple trend diagnostics (rolling mean)
-# Helps illustrate structural change without adding complexity
+#rolling mean
+#helps illustrate structural change without adding complexity
 
 df_all_sorted = df_all.sort_values("fy_start").reset_index(drop=True)
 df_all_sorted["real_income_3yr_ma"] = df_all_sorted["real_passenger_income_m"].rolling(window=3, min_periods=1).mean()

@@ -13,7 +13,7 @@ TRENDS_OUT_PATH = PROCESSED_DIR / "tfl_public_transport_journey_stages_annual.cs
 INCOME_OUT_PATH = PROCESSED_DIR / "tfl_income_annual.csv"
 
 #Headers start on Excel row 5 so header=4
-# Year + Total (public transport journey stages, millions)
+# Year + total (public transport journey stages, millions)
 
 tfl_trends_sheet4_df = pd.read_excel(
     TRENDS_RAW_PATH,
@@ -36,21 +36,12 @@ tfl_public_transport_journeys_annual_df = (
 # Save to file (clear where it is stored)
 tfl_public_transport_journeys_annual_df.to_csv(TRENDS_OUT_PATH, index=False)
 
-print("✅ Trends extracted")
 print(f"DataFrame name: tfl_public_transport_journeys_annual_df")
 print(f"Saved file: {TRENDS_OUT_PATH.resolve()}")
 print(tfl_public_transport_journeys_annual_df.head(), "\n")
 
 
-# =============================
-# 2) TfL Income Statement (headers NOT first row)
-# =============================
-# We will:
-# - Read the sheet without headers
-# - Find the row that contains financial year columns like 2015/16, 2016/17...
-# - Re-read using that row as the header
-# - Extract key rows (Passenger income, and Total income if present)
-# - Output tidy annual table
+#TfL Income Statement
 
 INCOME_SHEET = "0028 Income Statement with foot"
 
@@ -61,7 +52,7 @@ income_raw_noheader = pd.read_excel(
     header=None
 )
 
-# Helper: detect header row by looking for multiple "YYYY/YY" patterns in a row
+#detect header row by looking for multiple "YYYY/YY" patterns in a row to increase robustness
 fy_pattern = re.compile(r"^\d{4}/\d{2}$")
 
 header_row_idx = None
@@ -85,12 +76,12 @@ income_df = pd.read_excel(
     header=header_row_idx
 )
 
-# First column is the metric labels (e.g., Passenger income)
+#first column is the metric labels
 metric_col = income_df.columns[0]
 income_df = income_df.rename(columns={metric_col: "metric"})
 income_df["metric"] = income_df["metric"].astype(str).str.strip()
 
-# Identify which columns are financial years
+#identify which columns are financial years
 fy_cols = [c for c in income_df.columns if isinstance(c, str) and fy_pattern.match(c.strip())]
 
 if not fy_cols:
@@ -98,39 +89,36 @@ if not fy_cols:
         "Detected income statement header row, but couldn't find any financial-year columns like '2015/16'."
     )
 
-# Extract key metrics
-# Minimum required: Passenger income
+#extract key metrics
+#atleast need Passenger income
 passenger_row = income_df[income_df["metric"].str.contains("Passenger income", case=False, na=False)]
 if passenger_row.empty:
     raise ValueError("Could not find a 'Passenger income' row in the income statement sheet.")
 
-# Optional: Total income (different sheets sometimes label this differently)
+#Total income (attempt)
 total_row = income_df[income_df["metric"].str.contains("Total", case=False, na=False)]
 
-# Build tidy output: financial_year + passenger_income (+ optional total_income)
+#tidy up output
 tfl_income_annual_df = pd.DataFrame({
     "financial_year": fy_cols,
     "passenger_income_m": passenger_row.iloc[0][fy_cols].values,
 })
 
-# If we can find a good total income row, add it (only if it’s clearly a single row)
-# (We keep this conservative so we don't accidentally pick a random "Total ..." line.)
+
 if len(total_row) == 1:
     tfl_income_annual_df["total_income_m"] = total_row.iloc[0][fy_cols].values
 
 # Save to file
 tfl_income_annual_df.to_csv(INCOME_OUT_PATH, index=False)
 
-print("✅ Income Statement extracted")
-print(f"Detected header row index (0-based): {header_row_idx}")
+print("Income Statement extracted")
 print(f"DataFrame name: tfl_income_annual_df")
 print(f"Saved file: {INCOME_OUT_PATH.resolve()}")
+#print to check the dataframe  lloks as expected
 print(tfl_income_annual_df.head(), "\n")
 
 
-# =============================
-# Summary (what got stored where)
-# =============================
-print("=== STORED OUTPUTS ===")
+# Summary
+print("STORED OUTPUTS")
 print(f"1) {TRENDS_OUT_PATH} (from {TRENDS_RAW_PATH.name}, sheet '4')")
 print(f"2) {INCOME_OUT_PATH} (from {INCOME_RAW_PATH.name}, sheet '{INCOME_SHEET}')")

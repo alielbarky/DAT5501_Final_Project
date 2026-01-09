@@ -12,11 +12,11 @@ class TestTrainAndForecastARIMA(unittest.TestCase):
     def setUp(self):
         # Create a temporary CSV file
         temp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode="w", newline="")
-        temp.close() # <-- CLOSE IT HERE to avoid Windows file-lock issues
+        temp.close() # close it again to avoid Windows file-lock
 
         self.temp_file_name = temp.name
 
-        # Generate fake monthly data
+        # Generate simulated monthly data for testing
         dates = pd.date_range(start="2015-01-01", periods=60, freq="MS")
         inflation = np.random.normal(loc=2.0, scale=0.5, size=len(dates))
 
@@ -41,15 +41,15 @@ class TestTrainAndForecastARIMA(unittest.TestCase):
             order=(1, 1, 1)
         )
 
-        # 1. Type check
+        #check type
         self.assertIsInstance(forecast_df, pd.DataFrame)
 
-        # 2. Column check
+        #check column
         self.assertListEqual(
             list(forecast_df.columns),
             ["date", "predicted_inflation"])
 
-        # 3. Length check
+        #check length
         expected_dates = pd.date_range(
             start="2026-04-01",
             end="2026-12-01",
@@ -57,13 +57,13 @@ class TestTrainAndForecastARIMA(unittest.TestCase):
         )
         self.assertEqual(len(forecast_df), len(expected_dates))
 
-        # 4. Date correctness (ignore column name)
+        #check date
         pd.testing.assert_series_equal(
             forecast_df["date"],
             pd.Series(expected_dates),
             check_dtype=False,
             check_names=False)
-        # 5. Forecast values sanity
+        
         self.assertTrue(forecast_df["predicted_inflation"].notna().all())
 
 if __name__ == "__main__":
