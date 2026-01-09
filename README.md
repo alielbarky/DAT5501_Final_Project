@@ -1,2 +1,3 @@
 This is a repository dedicated to the final project for DAT5501.
-This project focuses on exploring how post-2025 UK budget tax changes, under different inflation scenarios, will affect demand for electric vehicles and projected revenues of EV companies in the UK
+.
+This project analyses TFL’s passenger income in real terms by adjusting historical revenues for inflation and extending them using forecast inflation. An ARIMA model is used to project inflation, informed by comparison with simpler polynomial models. The workflow produces figures to assess whether TfL’s real passenger income can be sustained under continued inflationary pressure for the next few years.
