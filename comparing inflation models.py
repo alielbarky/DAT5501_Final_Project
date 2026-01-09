@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import mean_absolute_error
 from statsmodels.tsa.arima.model import ARIMA
 
-#define a afunction to load and define data
+# Define a function to load and define data
 def load_and_split_data(csv_path):
     df = pd.read_csv(csv_path)
     df['date'] = pd.to_datetime(df['date'])
@@ -30,20 +30,20 @@ def polynomial_workflow(train, test):
     y_train = train['inflation_rate'].values
     X_test = np.arange(len(train), len(train) + len(test))
     y_test = test['inflation_rate'].values
-    
+   
     results = []
     for order in range(1, 10):
         # Fit polynomial and get covariance matrix
         coeffs, cov = np.polyfit(X_train, y_train, deg=order, cov=True)
-        
+       
         # Predictions on test set
         p = np.poly1d(coeffs)
         y_pred = p(X_test)
-        
-        #metrics
+       
+        # Metrics
         num_params = order + 1
         chi2_dof, bic, mae = compute_metrics(y_test, y_pred, num_params)
-        
+       
         results.append({
             'order': order,
             'coeffs': coeffs,
@@ -53,8 +53,8 @@ def polynomial_workflow(train, test):
             'mae': mae,
             'preds': y_pred
         })
-    
-    # Identify best based on lowest mean absolute erroer
+   
+    # Identify best based on lowest mean absolute error
     best_poly = min(results, key=lambda x: x['mae'])
     return results, best_poly
 
@@ -65,14 +65,15 @@ def arima_workflow(train, test, order=(1,1,1)):
     mae = mean_absolute_error(test['inflation_rate'], preds)
     return preds, mae
 
-#execute
+# Execute
+# Note: updated file path to point to the local directory
 train, test = load_and_split_data("data\processed\inflation.csv")
 
 poly_all_results, best_poly = polynomial_workflow(train, test)
 
 arima_preds, arima_mae = arima_workflow(train, test)
 
-# identify best overall model
+# Identify best overall model
 if best_poly['mae'] < arima_mae:
     best_overall_name = f"Polynomial (Order {best_poly['order']})"
     best_overall_mae = best_poly['mae']
@@ -80,7 +81,24 @@ else:
     best_overall_name = "ARIMA"
     best_overall_mae = arima_mae
 
-#print outputs
+# Plotting the polynomials and actual data
+plt.plot(train['date'], train['inflation_rate'], label='Train Data', color='gray', alpha=0.4)
+plt.plot(test['date'], test['inflation_rate'], label='Actual Test Data', color='black', linewidth=2)
+
+for res in poly_all_results:
+    # Highlighting the linear model (Order 1) with a thicker line
+    lw = 2.5 if res['order'] == 1 else 1.0
+    plt.plot(test['date'], res['preds'], label=f"Poly Order {res['order']}", linewidth=lw)
+
+plt.xlabel('Date')
+plt.ylabel('Inflation Rate (%)')
+plt.title('Polynomial Model Performance Comparison')
+plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+plt.grid(True, linestyle='--', alpha=0.7)
+plt.tight_layout()
+plt.savefig('polynomial_comparison.png')
+
+# Print outputs
 print(f"Best Polynomial Model Details")
 print(f"Order: {best_poly['order']}")
 print(f"Coefficients: {best_poly['coeffs']}")
@@ -90,8 +108,8 @@ print(f"Chi-squared per degree of freedom (test): {best_poly['chi2_dof']:.4f}")
 print(f"BIC (test): {best_poly['bic']:.4f}")
 print(f"MAE (test): {best_poly['mae']:.4f}")
 
-print(f"\n ARIMA Model")
+print(f"\nARIMA Model")
 print(f"Forecast MAE (test): {arima_mae:.4f}")
 
 print("")
-print(f"the best overall model is {best_overall_name} with a MAE of {best_overall_mae:.4f}")
+print(f"The best overall model is {best_overall_name} with a MAE of {best_overall_mae:.4f}")

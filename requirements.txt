@@ -4,3 +4,8 @@ pytest
 matplotlib
 scikit-learn
 statsmodels
+tempfile
+os
+unittest
+re
+pathlib
