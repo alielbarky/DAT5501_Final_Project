@@ -33,7 +33,8 @@ def polynomial_workflow(train, test):
     y_test = test['inflation_rate'].values
    
     results = []
-    for order in range(1, 10):
+    # MODIFIED: Changed range to (1, 8) to include orders 1 through 7
+    for order in range(1, 8):
         # Fit polynomial and get covariance matrix
         coeffs, cov = np.polyfit(X_train, y_train, deg=order, cov=True)
        
@@ -83,6 +84,7 @@ else:
     best_overall_mae = arima_mae
 
 # Plotting the polynomials against actual data
+plt.figure(figsize=(12, 7))
 plt.plot(train['date'], train['inflation_rate'], label='Train Data', color='gray', alpha=0.4)
 plt.plot(test['date'], test['inflation_rate'], label='Actual Test Data', color='black', linewidth=2)
 
@@ -93,7 +95,11 @@ for res in poly_all_results:
 
 plt.xlabel('Date')
 plt.ylabel('Inflation Rate (%)')
-plt.title('Polynomial Model Performance Comparison')
+plt.title('Polynomial Model Performance Comparison (Orders 1-7)')
+
+# MODIFIED: Scale y-axis to show +/- 10%
+plt.ylim(-10, 10)
+
 plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
 plt.grid(True, linestyle='--', alpha=0.7)
 plt.tight_layout()
